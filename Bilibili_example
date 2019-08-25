@@ -1,0 +1,309 @@
+#bilibili评论 爬虫示例2
+
+# coding: utf-8
+
+import requests
+import json
+import time
+import pymysql
+import logging
+import math
+from urllib import parse
+import bs4
+import random
+import re
+import datetime
+from pandas.tseries.offsets import Day
+import logging
+logging.basicConfig(
+    level = logging.INFO,
+    format = "[pid=%(process)d] %(asctime)s %(filename)s %(funcName)s %(lineno)s: %(levelname)s  %(message)s",
+    datefmt = "%Y-%m-%d %H:%M:%S",
+    filename = "../log/taptap_base.log",
+    filemode = "a"
+    )
+logging.getLogger("base").addHandler(logging.StreamHandler())
+
+
+
+def get_connect_mysql():
+    """
+    链接数据库
+    """
+    conn = pymysql.Connect(host='0.0.0.0', 
+                       user='', 
+                       passwd='', 
+                       db='',
+                       port=XX)
+    cur = conn.cursor()
+    return conn, cur
+
+
+def getConf():
+    conn, cur = get_connect_mysql()
+    sql = "select search_type,name,id,if_new from spider_data.video_config where channel='bilibili' and if_get=1"
+    cur.execute(sql)
+    result = cur.fetchall()
+    result = [item for item in result]
+    conn.close()
+    cur.close()
+    return result
+
+
+def turnFlag(name):
+    conn, cur = get_connect_mysql()
+    sql = "UPDATE spider_data.video_config SET if_new= 0 WHERE channel = 'bilibili' and name = '%s'"%(name)
+    cur.execute(sql)
+    conn.close()
+
+
+
+def get_history_data(name):
+    conn, cur = get_connect_mysql()
+    last_time = (datetime.datetime.now() - 7*Day()).strftime('%Y-%m-%d')
+    cur.execute("select comment_id,reply_id,replyNum,extstr1 from spider_data.video_comment where channel='bilibili' and name='%s' and create_time>=str_to_date('%s','%%Y-%%m-%%d')"%(name, last_time))
+    history_data_list = cur.fetchall()
+    cur.close()
+    conn.close()
+    history_data = dict()
+    for item in history_data_list:
+        history_data[item[0]] = item[1:]
+    return history_data
+
+
+
+def insert(data):
+    try_cnt = 1
+    while try_cnt <= 5:
+        try:
+            conn,cur = get_connect_mysql()
+            sql = """replace into spider_data.video_comment(stat_month,channel,name,comment_id,reply_id,url,create_time,comment_location,comment_type,content,memberName,member_id,replyNum,extstr1,extstr2)
+                     values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)                
+                  """
+            cur.executemany(sql, data)
+            conn.commit()
+            conn.close()
+            break
+        except Exception as e:
+            logging.error("插入数据到mysql失败 %s，重试 %s"%(e, try_cnt))
+            try_cnt += 1
+    if try_cnt > 5:
+            logging.info("插入数据到mysql失败，达到最大重试次数")
+
+
+
+def try_tUrl(mediaId,type_,cursor):
+    while_itr = 1
+    while while_itr<=10:
+        try:
+            text = tUrl(mediaId, type_, cursor)
+            if text:
+                return(text)
+                break
+        except Exception as e:
+            while_itr += 1
+    if while_itr > 10:
+        logging.info("错误视频id-%s"%(mediaId))
+        return None
+
+
+
+def try_urlText(Url):
+    while_itr = 1
+    while while_itr<=10:
+        try:
+            Text = urlText(Url)
+            if Text:
+                return(Text)
+                break
+        except Exception as e:
+            while_itr += 1
+    if while_itr > 10:
+        logging.info("错误-%s"%(Url))
+        return None
+
+
+def urlText(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.bilibili.com",
+        "Connection": "close",
+    }
+    text = requests.get(url, headers = headers)
+    time.sleep(random.uniform(0.5,1.5))
+    if text.status_code == 200:
+        text_ = json.loads(text.text)
+        return(text_)
+    return None
+
+
+def tUrl(movieId, _type, *cursor):
+    url = "https://bangumi.bilibili.com/review/web_api/" + _type + "/list?"
+    url = url + "media_id=" + str(movieId) + "&sort=1"   
+    if cursor[0]:
+        url = url + "&cursor=" + str(cursor[0])
+    session = requests.Session()
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.bilibili.com",
+        "Connection": "close",
+    }
+    response = session.get(url, headers=headers)
+    time.sleep(random.uniform(0.5,1.5))
+    if response.status_code == 200:
+        text_ = json.loads(response.text)
+        return(text_)
+    logging.info("错误-%s"%(url))
+    return None
+
+
+
+def bili_long(mediaId, flag):
+    cursor = ''
+    text = try_tUrl(mediaId, "long", cursor)
+    if text is None:
+        return
+    commentList = text["result"]["list"]
+    pnum = math.ceil(text['result']['total']/20)
+    longText(text)
+    if pnum > 1:
+        for p_id in range(pnum-1):
+            cursor = commentList[-1]['cursor']
+            json_text = try_tUrl(mediaId, "long", cursor)
+            if json_text is None:
+                return
+            if flag == 0 and time.strftime("%Y-%m-%d", time.localtime(int(json_text["result"]["list"][-1]['ctime'])))             <(datetime.datetime.now() - 7*Day()).strftime('%Y-%m-%d'):
+                break
+            ctime = longText(json_text,flag)
+
+
+
+def bili_short(mediaId,flag):
+    cursor = ''
+    text = try_tUrl(mediaId, "short", cursor)
+    if text is None:
+        return
+    commentList = text["result"]["list"]
+    pnum = math.ceil(text['result']['total']/20)
+    shortText(text)
+    if pnum > 1:
+        for p_id in range(pnum-1):
+            if commentList:
+                cursor = commentList[-1]['cursor']
+                json_text = try_tUrl(mediaId, "short", cursor)
+                if json_text is None:
+                    return
+                if flag == 0 and time.strftime("%Y-%m-%d", time.localtime(int(json_text["result"]["list"][-1]['ctime'])))                 <(datetime.datetime.now() - 7*Day()).strftime('%Y-%m-%d'):
+                    break
+                shortText(json_text,flag)
+
+
+def shortText(text,flag):
+    commentList = text["result"]["list"]
+    for comment in commentList:
+        if flag == 0 and str(comment['review_id']) in history_data() and str(comment['likes']) == history_data[str(comment['review_id'])][3]:
+            continue
+        content = re.sub("😂",'',comment['content'])
+        one_comment=[time.strftime("%Y%m", time.localtime(int(comment['ctime']))),sourcename,commicname,comment['review_id'],'-',short_url,time.strftime("%Y-%m-%d", time.localtime(int(comment['ctime']))),                      commentLocal1,commentType1,content,comment['author']['uname'],comment['author']['mid'],'-',comment['likes'],comment['user_rating']['score']]
+
+        comment_list.append(one_comment)
+
+
+def longText(json_text,flag):
+    for comment in commentList:
+        content = re.sub("😂","",comment['content'])
+        one_comment=[time.strftime("%Y%m", time.localtime(int(comment['ctime']))),sourcename,commicname,comment['review_id'],'-',long_url,time.strftime("%Y-%m-%d", time.localtime(int(comment['ctime']))), commentLocal1,commentType1,content,comment['author']['uname'],comment['author']['mid'],comment['reply'],comment['likes'],comment['user_rating']['score']]
+        comment_list.append(one_comment)
+            replyAddress ='https://api.bilibili.com/x/v2/reply?pn=1&type=12&oid=' +  str(comment['article_id'])
+            replyGet = requests.get(replyAddress)
+            reply_text = json.loads(replyGet.text)
+            replyPagenum = math.ceil(reply_text['data']['page']['count']/20)
+            for n in range(replyPagenum):
+                replyUrl='https://api.bilibili.com/x/v2/reply?pn=' +  str(n+1) + '&type=12&oid=' + str(comment['article_id'])
+                bilire1(replyUrl,comment['article_id'])
+    
+
+def bililist(id1,flag):
+    C_noAdr = 'https://api.bilibili.com/pgc/web/season/section?season_id=' + str(id1)
+    cGet = requests.get(C_noAdr)
+    cText = json.loads(cGet.text)
+    no = 1
+    if not cText['result'].get("main_section") is None:
+        clist = cText['result']['main_section']['episodes']
+        commentLocal2 = '第' + str(no) + '话'
+        index = 1
+    else:
+        clist = cText['result']['section'][0]['episodes']
+        commentLocal2 = 'PV' + str(no)
+    for item in clist:
+        videoComment(commentLocal2,item['aid'],item['share_url'],flag)
+        no += 1
+        if index:
+            commentLocal2 = '第' + str(no) + '话'
+        else:
+            commentLocal2 = 'PV' + str(no)
+
+def videoComment(local,vid,sUrl,flag):
+    C_noUrl = 'https://api.bilibili.com/x/v2/reply?pn=1&type=1&oid=' + str(vid) + '&sort=0'
+    C_commentGet = requests.get(C_noUrl)
+    C_commentText = json.loads(C_commentGet.text)
+    if not C_commentText['data']['upper']['top'] is None:
+        biliTop(C_commentText['data']['upper']['top'],local,vid,sUrl)
+    if not C_commentText['data']['top'] is None:
+        biliTop(C_commentText['data']['top'],local,vid,sUrl)
+    C_pagenum = math.ceil(C_commentText['data']['page']['count']/20)
+    bilicatch(C_pagenum, vid, local,sUrl,flag)
+
+def bilicatch(cnum,aid,cmtl,sUrl,flag):
+    for c_pn in range(cnum):
+        cUrl = 'https://api.bilibili.com/x/v2/reply?pn=' + str(c_pn+1) + '&type=1&oid=' + str(aid) + '&sort=0'
+        json_text = try_urlText(cUrl)
+        if json_text is None:
+            return
+        if flag == 0 and time.strftime("%Y-%m-%d", time.localtime(int(json_text['data']['replies'][-1]['ctime'])))         <(datetime.datetime.now() - 7*Day()).strftime('%Y-%m-%d'):
+            break
+        if json_text['data']['replies']:
+            commentList = json_text['data']['replies']
+            for comment in commentList:
+                if flag == 0 and str(comment['rpid']) in history_data and str(comment['rcount']) == history_data[str(comment['rpid'])][1]                 and str(comment['like']) == history_data[str(comment['rpid'])][2]:
+                    continue
+                message = re.sub("😂","",str(comment['content']['message']))
+                one_comment = [time.strftime("%Y%m", time.localtime(int(comment['ctime']))),sourcename,commicname,comment['rpid'],'-',sUrl,time.strftime("%Y-%m-%d", time.localtime(int(comment['ctime']))),                                 cmtl,commentType1,message,comment['member']['uname'],comment['mid'],comment['like'],comment['rcount'],'-']
+                comment_list.append(one_comment)
+                if int(comment['rcount']) > 0:
+                    replyAdr = 'https://api.bilibili.com/x/v2/reply/reply?pn=1&type=1&oid=' + str(aid) +                     '&ps=10&root=' + str(comment['rpid'])
+                    reply_text = try_urlText(replyAdr)
+                    if reply_text is None:
+                        return
+                    replyPagenum = math.ceil(reply_text['data']['page']['count']/reply_text['data']['page']['size'])
+                    for n in range(replyPagenum):
+                        replyUrl2 = 'https://api.bilibili.com/x/v2/reply/reply?pn=' + str(n+1) + '&type=1&oid=' + str(aid) +                         '&ps=10&root=' + str(comment['rpid'])
+                        bilire2(replyUrl2,cmtl,sUrl)
+
+
+
+if __name__ == '__main__':
+    searchList = getConf()
+    sourcename = 'Bilibili'
+    commentType1 = '主评论'
+    commentType2 = '评论回复'
+    commentLocal1 = '点评'    
+    for e in searchList:
+        history_data = dict()
+        comment_list = list()
+        commicname = e[1]
+        media_id = e[2]
+        if media_id:
+            if int(e[3]) == 0:
+                history_data = get_history_data(e[1])
+            adr = "https://www.bilibili.com/bangumi/media/md"+str(media_id)
+            season_id = re.findall('"season_id":(.*?),"season_type.*?',requests.get(adr).text)[0]
+            bililist(season_id,int(e[3]))
+            long_url = 'https://www.bilibili.com/bangumi/media/md'+str(media_id)+'/#long'
+            bili_long(media_id,int(e[3]))
+            short_url = 'https://www.bilibili.com/bangumi/media/md'+str(media_id)+'/#short'
+            bili_short(media_id,int(e[3]))
+            insert(comment_list)
+            turnFlag(commicname)
