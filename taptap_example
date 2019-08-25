@@ -1,0 +1,232 @@
+#Taptap游戏评论 爬虫示例1
+
+# coding: utf-8
+
+import requests
+import json
+from urllib import parse
+import math
+from bs4 import BeautifulSoup as bs
+import re
+import time
+import pymysql
+import logging
+import math
+import random
+import datetime
+from pandas.tseries.offsets import Day
+import logging
+logging.basicConfig(
+    level = logging.INFO,
+    format = "[pid=%(process)d] %(asctime)s %(filename)s %(funcName)s %(lineno)s: %(levelname)s  %(message)s",
+    datefmt = "%Y-%m-%d %H:%M:%S",
+    filename = "../log/taptap_base.log",
+    filemode = "a"
+    )
+logging.getLogger("base").addHandler(logging.StreamHandler())
+
+def get_connect_mysql():
+    """
+    链接数据库
+    """
+    conn = pymysql.Connect(host='', 
+                       user='', 
+                       passwd='', 
+                       db='',
+                       port='')
+    cur = conn.cursor()
+    conn.set_charset('utf8')
+    cur.execute('SET NAMES utf8;')
+    cur.execute('SET CHARACTER SET utf8;')
+    cur.execute('SET character_set_connection=utf8;')
+    return conn, cur
+
+def getConf():
+    conn, cur = get_connect_mysql()
+    sql = "select search_type,name,id,if_new from spider_data.video_config where channel='taptap' and if_get=1"
+    cur.execute(sql)
+    result = cur.fetchall()
+    result = [item for item in result]
+    conn.close()
+    return result
+
+def turnFlag(name):
+    conn, cur = get_connect_mysql()
+    sql = "UPDATE spider_data.video_config SET if_new= 0 WHERE channel = 'taptap' and name = '%s'"%(name)
+    cur.execute(sql)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_history_data(name):
+    conn, cur = get_connect_mysql()
+    last_time = (datetime.datetime.now() - 7*Day()).strftime('%Y-%m-%d')
+    cur.execute("select comment_id,reply_id,replyNum,extstr1 from spider_data.video_comment where channel='taptap' and name='%s' and create_time>=str_to_date('%s','%%Y-%%m-%%d')"%(name, last_time))
+    history_data_list = cur.fetchall()
+    cur.close()
+    conn.close()
+    history_data = dict()
+    for item in history_data_list:
+        history_data[item[0]] = item[1:]
+    return history_data
+
+def insert(data):
+    try_cnt = 1
+    while try_cnt <= 5:
+        try:
+            conn,cur = get_connect_mysql()
+            sql = """replace into spider_data.video_comment(stat_month,channel,name,comment_id,reply_id,url,create_time,comment_location,comment_type,content,memberName,member_id,replyNum,extstr1,extstr2)
+                     values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)                
+                  """
+            cur.executemany(sql, data)
+            conn.commit()
+            conn.close()
+            logging.info("插入数据库成功")
+            break
+        except Exception as e:
+            logging.error("插入数据到mysql失败 %s，重试 %s"%(e, try_cnt))
+            try_cnt += 1
+    if try_cnt > 5:
+        logging.info("插入数据到mysql失败，达到最大重试次数")
+
+def reqGet(id_,pn):
+    while_itr = 1
+    while while_itr<=10:
+        try:
+            headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://www.bilibili.com",
+            "Connection": "close",
+            }
+            adr = '=1&PN=TapTap&VN_CODE=328&LANG=zh_CN'
+            adr = "https://api.taptapdada.com/topic/v1/by-app?app_id="+str(id_)+"&X-UA=V"+parse.quote(adr)+"&sort=commented&from="+str(pn*10)+"&type=all&limit=10"
+            text = requests.get(adr,headers = headers)
+            time.sleep(random.uniform(0.5,1.5))
+            get = text.text
+            if text.status_code == 200:
+                return(json.loads(get))
+                break
+        except Exception as e:
+            while_itr += 1
+    if while_itr > 10:
+        logging.info("错误评论区id-%s"%(id_))
+        return None
+
+def commentGet(id_2,pn):
+    while_itr = 1
+    while while_itr<=10:
+        try:
+            headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://www.bilibili.com",
+            "Connection": "close",
+            }
+            adr = '=1&PN=TapTap&VN_CODE=328&LANG=zh_CN'
+            adr = 'https://api.taptapdada.com/post/v2/by-topic?topic_id='+str(id_2)+'&order=asc&referer=app&X-UA=V'+ parse.quote(adr) + '&from='+str(pn*10)+'&limit=10'
+            text = requests.get(adr,headers = headers)
+            time.sleep(random.uniform(0.5,1.5))
+            get = text.text
+            if text.status_code == 200:
+                return(json.loads(get))
+                break
+        except Exception as e:
+            while_itr += 1
+    if while_itr > 10:
+        logging.info("错误帖子id-%s"%(id_))
+        return None
+
+def replyGet(id_3,pn):
+    while_itr = 1
+    while while_itr<=10:
+        try:
+            headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://www.bilibili.com",
+            "Connection": "close",
+            }
+            adr = '=1&PN=TapTap&VN_CODE=328&LANG=zh_CN'
+            adr = 'https://api.taptapdada.com/post/v1/by-post?id='+str(id_3)+'&from='+str(pn*10)+'&limit=10&order=asc&X-UA=V'+parse.quote(adr)
+            text = requests.get(adr,headers = headers)
+            time.sleep(random.uniform(0.5,1.5))
+            get = text.text
+            if text.status_code == 200:
+                return(json.loads(get))
+                break
+        except Exception as e:
+            while_itr += 1
+    if while_itr > 10:
+        logging.info("错误评论id-%s"%(id_))
+        return None
+
+def gameComment(gameid,flag):
+    commentText = reqGet(gameid,0)
+    pagenum = math.ceil(commentText["data"]["total"]/10)
+    for i in range(pagenum):
+        if i%5 == 0:
+            tip = '已完成:'+str(i)+"/"+str(pagenum)
+            logging.info(tip)
+        commentText = reqGet(gameid,i)
+        commentList = commentText["data"]["list"]
+        if flag == 0 and time.strftime("%Y-%m-%d", time.localtime(int(commentList[-1]['created_time']))) < (datetime.datetime.now() - 7 * Day()).strftime('%Y-%m-%d'):
+            break
+        for comment in commentList:
+            cnum = math.ceil(comment["comments"]/10)
+            comment_text = commentGet(comment["id"],0)
+            first = comment_text["data"]["first_post"]
+            cmtLink = 'https://www.taptap.com/topic/' + str(comment["id"])
+            content = cleanStr(first["contents"]["text"])
+            if flag == 0 and str(first['id']) in history_data and str(first['comments']) == history_data[str(comment['rpid'])][1]:
+                continue
+            one_comment=[time.strftime("%Y%m", time.localtime(int(first['created_time']))),sourcename,commicname,first['id'],'-',cmtLink,time.strftime("%Y-%m-%d", time.localtime(int(first['created_time']))), commentLocal1,commentType1,content,comment['author']['name'],first["author"]["id"],first['comments'],"-","-"]
+            comment_list.append(one_comment)
+            for e in range(cnum):
+                cmtLink = 'https://www.taptap.com/topic/'+str(comment["id"])+'?order=asc&page='+str(e+1)+'#postsList'
+                comment_text = commentGet(comment["id"],e)
+                continue_comments = comment_text["data"]["list"]
+                for con in continue_comments:
+                    if flag == 0 and str(con['id']) in history_data and str(con['comments']) == history_data[str(comment['rpid'])][1]:
+                        continue
+                    content = cleanStr(con["contents"]["text"])
+                    one_comment=[time.strftime("%Y%m", time.localtime(int(con['created_time']))),sourcename,commicname,con['id'],first['id'],cmtLink,time.strftime("%Y-%m-%d", time.localtime(int(con['created_time']))), commentLocal1,commentType2,content,con['author']['name'],con["author"]["id"],con['comments'],con["ups"],con["downs"]]
+                    comment_list.append(one_comment)
+                    rnum = math.ceil(con["comments"]/10)
+                    if int(con['comments']) > 0:
+                        for k in range(rnum):
+                            replyText = replyGet(con["id"],k)
+                            replyList = replyText["data"]["list"]
+                            for reply in replyList: 
+                                content = cleanStr(reply["contents"]["text"])
+                                one_reply=[time.strftime("%Y%m", time.localtime(int(reply['created_time']))),sourcename,commicname,comment["id"],reply['id'],cmtLink,time.strftime("%Y-%m-%d", time.localtime(int(con['created_time']))), commentLocal1,commentType3,content,reply['author']['name'],reply["author"]["id"],reply['comments'],reply["ups"],reply["downs"]]
+                                comment_list.append(one_reply)
+
+def cleanStr(Str):
+    Str = re.sub("<br/>","",Str)
+    Str = re.sub("&nbsp;","",Str)
+    Str = re.sub("<.*?>","",Str)
+    Str = re.sub("&ang;","",Str)
+    return Str
+
+if __name__ == '__main__':
+    searchList = getConf()
+    sourcename = 'taptap'
+    commentLocal1 = "论坛"
+    commentType1 = "主楼"
+    commentType2 = "评论"
+    commentType3 = "回复"
+    conn, cur = get_connect_mysql()
+    for e in searchList:
+        history_data = dict()
+        comment_list = list()
+        commicname = e[1]
+        if int(e[3]) == 0:
+            history_data = get_history_data(e[1])
+        if e[2]:
+            gameComment(e[2],e[3])
+            insert(comment_list)
+            turnFlag(commicname)
+    
+
+
