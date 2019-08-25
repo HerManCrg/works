@@ -1,0 +1,348 @@
+查找 
+执行顺序:FROM > WHERE > GROUP BY > HAVING > SELECT > DISTINCT > UNION > ORDER BY
+更新 
+INSERT 
+插入数据格式
+1.	INSERT INTO tb_name(column_list)  
+2.	VALUES(value_list),(value_list2)...;
+插入查询结果 
+1.	INSERT INTO tb_name(column_list)  
+2.	SELECT column_list2 FROM tb_name2;  
+REPLACE  如果插入数据行与PK或UNIQUE约束冲突，则INSERT无法插入，需要通过REPLACE实现，会将冲突的旧记录删除，插入新纪录  注意：REPLACE对FK约束仍会出错 
+1.	REPLACE INTO tb_name(column_list)  
+2.	VALUES(value_list),(value_list2)...;  
+UPDATE  若value想取默认值，用DEFAULT代替，同时value也可取表达式；UPDATE的WHERE可以嵌套子查询 
+1.	UPDATE tb_name  
+2.	SET column1=value1,column2=value2,...  
+3.	[WHERE<conditions>];  
+DELETE  DELETE的WHERE可以嵌套子查询 
+1.	DELETE FROM tb_name  
+2.	[WHERE <conditions>];  
+TRUNCATE  TRUNCATE将直接删除表并重建，执行速度比DELETE快;删除数据后无法恢复，需要十分小心 
+1.	TRUNCATE tb_name  
+索引 
+建立索引的目的就是加快数据库检索的速度
+索引类型： 
+普通索引 INDEX KEY  可空可重复
+唯一性索引 UNIQUE
+主键索引 PRIMARY KEY  创建主键时自动成立，与唯一性索引不同在于索引列值不能为空
+聚簇索引
+全文索引 FULLTEXT 
+#查看索引 
+1.	SHOW {INDEX|INDEXES|KEYS}  
+2.	FROM tb_name\G;  
+创建索引 
+在建表时创建索引
+CREATE INDEX
+1.	CREATE [UNIQUE] INDEX index_name  
+2.	ON tb_name(col_name [ASC|DESC]...);  
+ALTER INDEX
+删除索引 
+1.	DROP INDEX index_name  
+2.	ON tb_name 
+索引的问题 
+降低更新速度
+增加存储空间
+视图 
+创建视图 
+OR REPLACE可用于替换数据库中已有的同名视图； 
+1.	CREATE [OR REPLACE] VIEW view_name[(column_list)]  
+2.	AS SELECT_statement  
+3.	[WITH [CASCADED|LOCAL] CHECK OPTION]; 
+删除视图 
+1.	DROP VIEW [IF EXISTS]  
+2.	  view_name [,view_name];  
+更新视图 
+1.	UPDATE view_name  
+2.	SET column1=value1  
+3.	WHERE column2=value2;  
+
+事件 
+ 事件是基于特定时间周期来执行某些任务，而触发器是基于某个表所产生的时间触发的 
+1.	CREATE EVENT [IF NOT EXISTS] event_name  
+2.	ON SCHEDULE schedule  
+3.	DO event_body  
+4.	SCHEDULE的语法格式示例：   
+5.	EVERAY 1 MONTH  
+6.	STARTS CURDATE()+INTERVAL 1 MONTH  
+7.	ENDS '2016-12-31' 
+ 删除事件： 
+DROP EVENT [IF EXISTS] event_name 
+存储过程与存储函数 
+存储过程 
+创建存储过程 
+ 为使多条语句能顺利执行，需要暂时修改MySQL的结束标志，如修改为$$ DELIMITER $$ 
+1.	CREATE PROCEDURE sp_name([proc_parameter[,..]])  
+2.	   routine_body
+3.	   proc_parameter：[IN|OUT|INOUT]param_name type  
+4.	   routine_body：存储过程主体，BEGIN——END  
+存储过程体 
+局部变量：只能在存储过程体中的BEGIN-END的开头中声明，作用范围也只在BEGIN-END内；用户变量前面有@，而且作用于整个会话 
+1.	DECLARE var_name[,...] type [DEFAULT value]  
+2.	SET var_name=expr[,var_name=expr]...  
+3.	SELECT col_name[,...] INTO var_name[,...] [conditions]  
+流程控制语句 
+1.	IF search_condition THEN statement_list  
+2.	[ELSEIF search_condition THEN statement_list]...  
+3.	[ELSE statement_list]  
+4.	END IF  
+5.	  
+6.	[begin_label:]WHILE search_condition DO  
+7.	statement_list  
+8.	END WHILE  
+9.	  
+10.	[begin_label:]REPEAT  
+11.	statement_list  
+12.	UNTIL search_condition  
+13.	END REPEAT  
+游标  游标使一个被SELECT语句检索出来的结果集，只能用于存储过程和存储函数 
+调用存储过程 CALL sp_name([parameter[,...]]) ### 删除存储过程 DROP PROCEDURE [IF EXISTS] sp_name
+存储函数，存储函数与存储过程的区别
+1.	DECLARE cursor_name CURSOR FOR select_statement    
+2.	OPEN cursor_name    
+3.	FETCH cursor_name INTO var_name[,var_name]...    
+4.	CLOSE cursor_name    
+存储函数不能有输出参数，这是因为存储函数本身就是输出参数，而存储过程可以有输出参数
+可以直接调用存储函数，而不用使用CALL；而存储过程的调用需要使用CALL
+1.	CREATE FUNCTION sp_name([func_parameter[,...]])    
+2.	RETURNS type    
+3.	routine_body    
+4.	func_parameter格式：param_name type    
+访问控制与安全管理
+用户账号管理 
+创建用户账号 
+CREATE USER user_name@ip IDENTIFIED BY password;  
+权限管理 
+ USAGE表示用户没有权限 
+授予权限 
+ WITH GRANT OPTION表示被授权用户可以授权给别人 
+1.	GRANT [ALL|SELECT(column_list)]    
+2.	ON db_name.tb_name    
+3.	TO user_name@ip    
+4.	WITH GRANT OPTION;    
+常用函数
+1) 时间函数
+1、时间格式化 DATE_FORMAT
+1.	SELECT DATE_FORMAT('20190805','%Y%m%d')  
+2、时间的加减
+1.	--INTERVAL  
+2.	CURRENT_DATE()- INTERVAL 1 DAY --mysql里的时间加减  
+3.	SELECT DATE_FORMAT(DATE_FORMAT(NOW(),'%Y%m%d') - INTERVAL 1 MONTH,'%Y%m')  
+4.	  
+5.	--DATEDIFF  
+6.	SELECT DATEDIFF(DATE_FORMAT(NOW(),'%Y%m%d') ,DATE_FORMAT('date','%Y%m%d'))  
+7.	  
+8.	--DATE_SUB  
+9.	Select DATE_SUB(CURDATE(), INTERVAL 7 DAY)   
+-- 时间小时的加减
+1.	SELECT DATE_ADD('2016-01-01 00:00:00', INTERVAL '0 12:0:0' DAY_SECOND);  
+-- mysql查看时间相差多少秒，second可替换成minute，day,month等，后减前
+1.	SELECT TIMESTAMPDIFF(SECOND,'2013-01-01 00:00:00','2013-01-31 02:20:00');  
+-- 如何取上个月和下个月
+1.	select substr(date_sub(concat(substr('date',1,6),'01'),1),1,6) from table; --取上个月  
+2.	select substr(date_add(concat(substr('date',1,6),'01'),35),1,6) from table; --取下个月  
+3、时间戳的换算（hive,mysql均可）
+1.	unix_timestamp 把时间转换成时间戳  
+2.	from_unixtime 把时间戳转换成时间  
+3.	select unix_timestamp('2011-12-07 13:01:03')+16*3600 from table;  
+4.	select from_unixtime(unix_timestamp('2011-12-07 13:01:03')+16*3600,'yyyy-MM-dd HH:mm:ss') from table;  
+2) 数据处理函数
+1.	--CONCAT 和 ROUND  
+2.	CONCAT(ROUND(SUM(day_pay_usercnt)*100/ SUM(day_actv_usercnt), 2),'%') '付费',  
+3.	-- case when...then...else...end  
+4.	sum(case when b.reg_flag = 1 then 1 else 0 end) as day_reg_usercnt,  
+5.	sum(case when b.reg_flag = 1 then after_golds else 0 end) as day_reguser_left_amount  
+-- if
+1.	sum(if((prev_golds + golds)<2000 and golds<0,1,0)) as bankruptcy_num,-- 用于先统计用户某行为的次数          
+2.	SUM(if(reg_flag=1,bankruptcy_num,0)) AS reg_bankruptcy_num, --用于最后统计满足某条件的总次数  
+3.	COUNT(DISTINCT if(reg_flag=1 and bankruptcy_num>0,a.player_id,null))AS reg_bankruptcy_usercnt,--用于最后统计满足某条件的总人数  
+-- count
+1.	COUNT(DISTINCT a.player_id) AS actv_all_usercnt  
+2.	COUNT(DISTINCT if(reg_flag=1,a.player_id,null)) AS reg_all_usercnt  
+--substr 截取
+1.	substr(login_buvffer,-16,16) AS open_id  
+2.	substr(channel_id, 1, 32) as channel_id
+--instr：返回要截取的字符串在源字符串中的“位置”。
+1.	instr(string1, string2, start_position[哪个位置开始查找],nth_appearance[第几次出现]] )  
+2.	select instr('0010000000000000000010000000000000000000000000000000000001000000000000000000000000100000000000000000','1',1,2)  
+-- split：返回一个下标从零开始的一维数组
+1.	cast(split(extstr1,"\073")[3] as bigint  
+部分定制化需求
+-- 分类一：活跃新增留存付费的查询
+1.	select stat_date,substr(stat_date,1,6) as reg_month,game_id,channel_id,player_id  
+2.	from 每日活跃表   
+3.	where stat_date >='date' and game_id in (1,2)  
+4.	and game_server='1' and channel_id='1' and game_version='1'  
+5.	(and reg_flag=1--新增)  
+6.	      
+7.	select stat_date,substr(stat_date,1,6) as reg_month,game_id,channel_id,player_id  
+8.	from 每日付费表   
+9.	where stat_date >='date' and game_id in (1,2)  
+10.	and game_server='1' and channel_id='1' and game_version='1'  
+11.	  
+12.	SELECT a.vgameid,  
+13.	       reg_date,  
+14.	       datediff(b.stat_date,reg_date) AS day_num, -- 留存天  
+15.	       count(distinct a.deviceid) as users --留存设备数  
+16.	FROM  
+17.	(  
+18.	-- 每设备注册日期、活跃日期、 留存天数  
+19.	SELECT  reg_date,  
+20.	        vgameid,  
+21.	        open_id  
+22.	FROM 每日注册表)a  
+23.	left join  
+24.	(  
+25.	-- 每天活跃用户  
+26.	SELECT vgameid,  
+27.	       open_id,  
+28.	       SUBSTRING(log_date,1,8) AS stat_date  
+29.	FROM table1  
+30.	) b  
+31.	ON a.open_id= b.idAND a.vgameid = b.vgameid  
+32.	GROUP BY 1,2,3;  
+33.	  
+34.	转化openid为player_id, ids_user_action.openid_playerid  
+35.	SELECT IF(vgameappkey='a3415c8c71fed0ab53ed',11076,11074) AS game_id,a.stat_date,vusersid,nvl(getplayerid(a.vusersid),c.player_id) AS player_id,viplevel  
+36.	FROM  
+37.	    (  
+38.	    SELECT vgameappkey,SUBSTR(log_date,1,6) AS stat_date,vusersid,MAX(viplevel) AS viplevel  
+39.	    FROM table a  
+40.	    WHERE log_date>='date'  
+41.	    GROUP BY vgameappkey,SUBSTR(log_date,1,6),vusersid  
+42.	    ) a  
+43.	LEFT OUTER JOIN  
+44.	    (SELECT * FROM   ids_user_action.openid_playerid c WHERE game_id IN ('11076','11074')) c  
+45.	ON a.vusersid = c.openid  
+--查询每个玩家的充值流水
+1.	SELECT player_id,FROM_UNIXTIME(pay_callback_time),channel_id,product_name,amount,is_ignore  
+2.	FROM 每日充值表  
+3.	WHERE int11 >= UNIX_TIMESTAMP('2018-01-01 00:00:00') AND  int11<UNIX_TIMESTAMP('2018-10-02 00:00:00')  
+4.	AND game_id ='11898'    
+5.	AND player_id='1592756576'  
+6.	AND channel_id='LD0S0N00005'  
+-- 查询每天的收入,付费人数
+1.	SELECT game_id,order_date,SUM(amount) AS amount,COUNT(DISTINCT player_id)  
+2.	FROM ids_report.ids_orders  
+3.	where order_date>='date' -- and order_date<'date'  
+4.	and game_id=11076  and is_ignore='N'  
+5.	group by game_id,order_date  
+6.	order by  2,3 desc  
+7.	  
+8.	SELECT player_id,FROM_UNIXTIME(pay_callback_time),channel_id,product_name,amount,is_ignore  
+9.	FROM ids_report.ids_orders  
+10.	WHERE int11 >= UNIX_TIMESTAMP('${start_date}') AND  int11<UNIX_TIMESTAMP('${end_date}')  
+11.	AND game_id ='11898'    
+--查看某个月新出现的id
+1.	select b.id,a.id as old from  
+2.	(select distinct id 
+3.	from table1 
+4.	where stat_date < 'month1')a  
+5.	right join  
+6.	(select distinct id 
+7.	from table1 
+8.	where stat_date between  'month1' and 'month2')b  
+9.	on a.id = b.id  
+10.	where a.id is null;  
+--关联a日量表，b配置表计算物品持有人数、人均持有数
+1.	SELECT a.id AS "ID",  
+2.	       b.name AS "名称",  
+3.	       COUNT(DISTINCT a.open_id) AS "人数",  
+4.	       SUM(a.num) AS "拥有个数",  
+5.	       ROUND(SUM(a.num)*1.0 / COUNT(DISTINCT a.open_id)) AS "人均拥有个数"  
+6.	FROM (SELECT DISTINCT iroleid,  
+7.	             open_id,  
+8.	             max_by(num,time) AS num  
+9.	             FROM table  
+10.	             GROUP BY 1,2) a  
+11.	LEFT JOIN (SELECT DISTINCT id,  
+12.	                  name  
+13.	                  FROM table2) b  
+14.	ON TRY_CAST (a.id AS VARCHAR) = b.id  
+15.	GROUP BY 1,2,3;  
+--利用原始物品表当日数据结合全量物品中间表历史数据更新全量物品中间表的当日数据
+1.	INSERT INTO 中间表table  
+2.	SELECT DISTINCT open_id,  
+3.	       a.id,  
+4.	       max_by(a.num,a.date),  
+5.	       a.date,  
+6.	       d.item_name,  
+7.	       a.type  
+8.	FROM (SELECT DISTINCT TRY_CAST(id AS VARCHAR) AS id,  
+9.	             open_id,  
+10.	             num,  
+11.	             date  
+12.	      FROM 原始表table2  
+13.	      WHERE date = 'date'  
+14.	      UNION ALL  
+15.	      SELECT DISTINCT id,  
+16.	             open_id,  
+17.	             num,  
+18.	             date               
+19.	      FROM 中间表table  
+20.	      WHERE stat_date = date_sub('date',1)  
+21.	      ) a  
+22.	  LEFT JOIN (SELECT DISTINCT id,  
+23.	                    item_name  
+24.	             FROM 名字配置表table3  
+25.	             WHERE game_id = '90336'  
+26.	             ) d  
+27.	ON CAST (a.id AS VARCHAR) = d.id  
+28.	GROUP BY 1,2,4,5,6;  
+
+--建立类别次数临时表，并避免没出现的类别在结果中没展示
+1.	create table table1 as  
+2.	select group, sum(cnt) as "次数"  
+3.	from  
+4.	(  
+5.	select id, count(distinct open_id ) as users, count(1) as cnt  
+6.	from 原始日志table2  
+7.	WHERE key in ('111','222','333','444','555','666')  
+8.	group by 1  
+9.	)a  
+10.	right join (select distinct id,group from 配置表table3) b on a.id=b.id  
+11.	group by 1;  
+
+--计算某种行为成功的平均次数和比率
+1.	SELECT  (if(begin_user<>0,ROUND(begin_num*1.0/begin_user,2),0) AS "平均次数",  
+2.	              CONCAT(try_cast (if(begin_user<>0,ROUND(sucess_user*100.0/begin_user,2),0)  
+3.	                        AS VARCHAR),'%') as "成功率"  
+4.	FROM  
+5.	(SELECT  event,  
+6.	              sum(case when value = 1 then user else 0 end) AS begin_user,  
+7.	              sum(case when value = 1 then num else 0 end) AS begin_num,  
+8.	              sum(case when value = 2 then user else 0 end) AS sucess_user  
+9.	 FROM 原始表table  
+10.	 GROUP BY 1)  
+--将一组数据添加上来自另一张表的某个固定值
+1.	SELECT a.event,a.num,b.user  
+2.	  FROM  
+3.	  (SELECT  
+4.	   '1' as con,  
+5.	   event,  
+6.	   SUM(case when value = '1' then user else 0 end) as num  
+7.	    FROM table1  
+8.	    GROUP BY 1,2)a  
+9.	    left join (SELECT  
+10.	                  '1' as con,  
+11.	                  sum(user) as user  
+12.	                  FROM table2  
+13.	                  GROUP BY 1)b  
+14.	  ON(b.con = a.con)  
+--计算相应事件下a、b物品的出现次数
+1.	with x as (  
+2.	    select  
+3.	       key,  
+4.	       open_id,  
+5.	       a_id,  
+6.	       b_id,  
+7.	       from table1 a  
+8.	select key,open_id,  
+9.	          'a' as type_id,  
+10.	           a_id  
+11.	from x           
+12.	union all  
+13.	select key,open_id,  
+14.	        'b' as type_id,  
+15.	        b_id  
+16.	from x    ) a  
